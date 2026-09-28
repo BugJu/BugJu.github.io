@@ -1,0 +1,156 @@
+---
+const links = [
+  { href: '/#start', label: 'Start', id: 'start' },
+  { href: '/#projects', label: 'Projekte', id: 'projects' },
+  { href: '/#about', label: 'Über mich', id: 'about' },
+];
+
+// Auf der Startseite ist "Start" initial aktiv; beim Scrollen übernimmt
+// der Scrollspy auf der Startseite (index.astro) die Markierung.
+const isHome = Astro.url.pathname === '/';
+---
+
+<header class="site-header">
+  <nav>
+    <a href="/" class="brand">BugJu</a>
+    <ul>
+      {
+        links.map((link) => (
+          <li>
+            <a
+              href={link.href}
+              data-nav={link.id}
+              class={link.id === 'start' && isHome ? 'active' : ''}
+            >
+              {link.label}
+            </a>
+          </li>
+        ))
+      }
+      <li class="auth">
+        <a href="/login" data-auth="login">Anmelden</a>
+        <a href="/members" data-auth="members" hidden>Mitglieder</a>
+        <button type="button" data-auth="logout" hidden>Abmelden</button>
+      </li>
+    </ul>
+  </nav>
+</header>
+
+<script>
+  import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
+  // Sticky-Header-Höhe messen und als CSS-Variable bereitstellen,
+  // damit Anker-Sprünge exakt unter dem Header landen.
+  const headerEl = document.querySelector<HTMLElement>('.site-header');
+  if (headerEl) {
+    document.documentElement.style.setProperty(
+      '--header-h',
+      `${headerEl.offsetHeight}px`
+    );
+  }
+
+  // Zeigt "Anmelden" bzw. "Mitglieder/Abmelden" je nach Login-Status.
+  (async () => {
+    const loginLink = document.querySelector<HTMLAnchorElement>('[data-auth="login"]');
+    const membersLink = document.querySelector<HTMLAnchorElement>('[data-auth="members"]');
+    const logoutBtn = document.querySelector<HTMLButtonElement>('[data-auth="logout"]');
+
+    const apply = (loggedIn: boolean) => {
+      if (loginLink) loginLink.hidden = loggedIn;
+      if (membersLink) membersLink.hidden = !loggedIn;
+      if (logoutBtn) logoutBtn.hidden = !loggedIn;
+    };
+
+    if (!isSupabaseConfigured) {
+      apply(false);
+      return;
+    }
+
+    const { data } = await supabase.auth.getSession();
+    apply(Boolean(data.session));
+
+    supabase.auth.onAuthStateChange((_event, session) => apply(Boolean(session)));
+
+    logoutBtn?.addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      window.location.href = '/';
+    });
+  })();
+</script>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--page-bg, var(--bg)) 85%, transparent);
+    backdrop-filter: blur(8px);
+  }
+
+  nav {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding: 0.9rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    font-weight: 700;
+    font-size: 1.15rem;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  .brand:hover {
+    text-decoration: none;
+    color: var(--accent);
+  }
+
+  ul {
+    list-style: none;
+    display: flex;
+    gap: 1.25rem;
+    margin: 0;
+    padding: 0;
+    flex-wrap: wrap;
+  }
+
+  ul a {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+  ul a:hover,
+  ul a.active {
+    color: var(--text);
+    text-decoration: none;
+  }
+  ul a.active {
+    color: var(--accent);
+  }
+
+  /* Login/Logout-Bereich */
+  .auth {
+    display: flex;
+    align-items: center;
+  }
+  .auth button {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  .auth button:hover {
+    color: var(--text);
+    text-decoration: underline;
+  }
+</style>

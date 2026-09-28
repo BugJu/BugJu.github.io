@@ -1,0 +1,177 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Anmelden – BugJu" description="Login für Mitglieder.">
+  <section class="auth">
+    <h1>Anmelden</h1>
+    <p class="text-muted">
+      Melde dich an, um auf die internen Seiten zuzugreifen.
+    </p>
+
+    <form id="login-form" class="auth-form" novalidate>
+      <label>
+        E-Mail
+        <input
+          type="email"
+          name="email"
+          autocomplete="email"
+          placeholder="du@example.com"
+          required
+        />
+      </label>
+
+      <label>
+        Passwort
+        <input
+          type="password"
+          name="password"
+          autocomplete="current-password"
+          placeholder="••••••••"
+          required
+        />
+      </label>
+
+      <button type="submit" class="btn" id="login-submit">Anmelden</button>
+
+      <p id="login-error" class="auth-error" role="alert" hidden></p>
+      <p id="login-notice" class="text-muted" hidden></p>
+    </form>
+  </section>
+</BaseLayout>
+
+<script>
+  import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
+  (async () => {
+    const form = document.getElementById('login-form') as HTMLFormElement | null;
+    const submitBtn = document.getElementById('login-submit') as HTMLButtonElement | null;
+    const errorEl = document.getElementById('login-error');
+    const noticeEl = document.getElementById('login-notice');
+
+    // Wohin nach dem Login? Nur interne Pfade erlauben (kein Open-Redirect).
+    const params = new URLSearchParams(window.location.search);
+    const rawRedirect = params.get('redirect') || '/members';
+    const redirectTo = rawRedirect.startsWith('/') ? rawRedirect : '/members';
+
+    const showError = (msg: string) => {
+      if (!errorEl) return;
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+    };
+
+    if (!form) return;
+
+    if (!isSupabaseConfigured) {
+      form.querySelectorAll('input, button').forEach((el) => {
+        (el as HTMLInputElement).disabled = true;
+      });
+      if (noticeEl) {
+        noticeEl.textContent =
+          'Konfiguration fehlt: Bitte PUBLIC_SUPABASE_URL und PUBLIC_SUPABASE_ANON_KEY in der .env-Datei setzen.';
+        noticeEl.hidden = false;
+      }
+      return;
+    }
+
+    // Schon eingeloggt? Dann direkt weiterleiten.
+    const { data } = await supabase.auth.getSession();
+    if (data.session) {
+      window.location.replace(redirectTo);
+      return;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (errorEl) errorEl.hidden = true;
+      if (noticeEl) noticeEl.hidden = true;
+
+      const formData = new FormData(form);
+      const email = String(formData.get('email') || '').trim();
+      const password = String(formData.get('password') || '');
+
+      if (!email || !password) {
+        showError('Bitte E-Mail und Passwort eingeben.');
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Anmelden …';
+      }
+
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        showError('Anmeldung fehlgeschlagen: ' + error.message);
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Anmelden';
+        }
+        return;
+      }
+
+      window.location.replace(redirectTo);
+    });
+  })();
+</script>
+
+<style>
+  .auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 24rem;
+    margin-top: 1.5rem;
+  }
+
+  .auth-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  .auth-form input {
+    font: inherit;
+    font-size: 1rem;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .auth-form input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: var(--accent);
+  }
+
+  .btn {
+    display: inline-block;
+    margin: 0.25rem 0 0;
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.95rem;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+  }
+  .btn:hover {
+    background: var(--accent-hover);
+  }
+  .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .auth-error {
+    margin: 0;
+    color: #dc2626;
+    font-size: 0.9rem;
+  }
+</style>

@@ -1,0 +1,80 @@
+---
+const projects = [
+  {
+    name: 'Projekt Eins',
+    description: 'Kurze Beschreibung deines ersten Projekts.',
+    tags: ['Astro', 'TypeScript'],
+    url: 'https://github.com/BugJu',
+  },
+  {
+    name: 'Projekt Zwei',
+    description: 'Kurze Beschreibung deines zweiten Projekts.',
+    tags: ['Node.js'],
+    url: 'https://github.com/BugJu',
+  },
+  {
+    name: 'Projekt Drei',
+    description: 'Kurze Beschreibung deines dritten Projekts.',
+    tags: ['Open Source'],
+    url: 'https://github.com/BugJu',
+  },
+];
+---
+
+<ul class="projects">
+  {
+    projects.map((project) => (
+      <li>
+        <h3>
+          <a href={project.url} target="_blank" rel="noopener">
+            {project.name}
+          </a>
+        </h3>
+        <p>{project.description}</p>
+        <ul class="tags">
+          {project.tags.map((tag) => (
+            <li>{tag}</li>
+          ))}
+        </ul>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .projects {
+    list-style: none;
+    padding: 0;
+  }
+  .projects > li {
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .projects h3 {
+    margin: 0 0 0.35rem;
+    font-size: 1.3rem;
+  }
+  .projects p {
+    margin: 0 0 0.5rem;
+  }
+
+  .tags {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0;
+    margin: 0;
+  }
+  .tags li {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+  }
+</style>

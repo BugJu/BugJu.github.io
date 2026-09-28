@@ -1,0 +1,185 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Mitgliederbereich – BugJu"
+  description="Interner Bereich für angemeldete Mitglieder."
+>
+  <section class="members">
+    <header class="members-header">
+      <div>
+        <h1>Mitgliederbereich</h1>
+        <p class="text-muted" id="members-user">Status wird geprüft …</p>
+      </div>
+      <button type="button" id="logout-btn" class="btn-ghost" hidden>
+        Abmelden
+      </button>
+    </header>
+
+    <div id="members-loading" class="text-muted">Inhalt wird geladen …</div>
+
+    <div id="members-denied" hidden>
+      <p>Du bist nicht angemeldet. Bitte melde dich an, um fortzufahren.</p>
+      <p>
+        <a class="btn" href="/login?redirect=/members">Zum Login</a>
+      </p>
+    </div>
+
+    <div id="members-content" hidden>
+      <ul id="members-list" class="members-list"></ul>
+      <p id="members-empty" class="text-muted" hidden>
+        Noch keine Inhalte vorhanden.
+      </p>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
+  // Diese Seite ist NICHT serverseitig geschützt (statisches Hosting).
+  // Der Inhalt kommt aus Supabase und ist dort per Row Level Security (RLS)
+  // nur für angemeldete Nutzer lesbar.
+  (async () => {
+    const userEl = document.getElementById('members-user');
+    const logoutBtn = document.getElementById('logout-btn');
+    const loadingEl = document.getElementById('members-loading');
+    const deniedEl = document.getElementById('members-denied');
+    const contentEl = document.getElementById('members-content');
+    const listEl = document.getElementById('members-list');
+    const emptyEl = document.getElementById('members-empty');
+
+    const showDenied = () => {
+      if (loadingEl) loadingEl.hidden = true;
+      if (contentEl) contentEl.hidden = true;
+      if (deniedEl) deniedEl.hidden = false;
+      if (userEl) userEl.textContent = 'Nicht angemeldet';
+    };
+
+    if (!isSupabaseConfigured) {
+      if (loadingEl) loadingEl.hidden = true;
+      if (deniedEl) deniedEl.hidden = false;
+      if (userEl) {
+        userEl.textContent =
+          'Konfiguration fehlt (PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_ANON_KEY).';
+      }
+      return;
+    }
+
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) {
+      window.location.replace('/login?redirect=/members');
+      return;
+    }
+
+    if (userEl) userEl.textContent = data.session.user.email ?? 'Angemeldet';
+    if (logoutBtn) logoutBtn.hidden = false;
+
+    logoutBtn?.addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      window.location.replace('/');
+    });
+
+    // Inhalt aus Supabase laden – per RLS nur für angemeldete Nutzer sichtbar.
+    const { data: rows, error } = await supabase
+      .from('members_content')
+      .select('id, title, body, created_at')
+      .order('created_at', { ascending: false });
+
+    if (loadingEl) loadingEl.hidden = true;
+    if (contentEl) contentEl.hidden = false;
+
+    if (error) {
+      if (listEl) listEl.hidden = true;
+      if (emptyEl) {
+        emptyEl.textContent =
+          'Inhalt konnte nicht geladen werden: ' + error.message;
+        emptyEl.hidden = false;
+      }
+      return;
+    }
+
+    if (!rows || rows.length === 0) {
+      if (listEl) listEl.hidden = true;
+      if (emptyEl) emptyEl.hidden = false;
+      return;
+    }
+
+    if (listEl) {
+      listEl.innerHTML = rows
+        .map(
+          (row) => `
+            <li>
+              <h2>${escapeHtml(row.title ?? '')}</h2>
+              <div>${escapeHtml(row.body ?? '')}</div>
+            </li>`
+        )
+        .join('');
+    }
+
+    function escapeHtml(value: string): string {
+      return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+  })();
+</script>
+
+<style>
+  .members-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .members-header p {
+    margin-top: 0.25rem;
+  }
+
+  .btn,
+  .btn-ghost {
+    display: inline-block;
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+  }
+  .btn:hover {
+    background: var(--accent-hover);
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover {
+    background: var(--bg-subtle);
+    text-decoration: none;
+  }
+
+  .members-list {
+    list-style: none;
+    padding: 0;
+  }
+  .members-list > li {
+    padding: 1.25rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .members-list h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.2rem;
+  }
+</style>
