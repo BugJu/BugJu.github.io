@@ -15,6 +15,9 @@ pnpm-debug.log*
 .env
 .env.production
 
+# Persönliche/lokale Notizen - nicht veröffentlichen
+SETUP.md
+
 # OS / Editor
 .DS_Store
 Thumbs.db
