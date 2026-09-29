@@ -30,6 +30,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify Supabase config is available
+        # Bricht ab, falls die Secrets fehlen - sonst läuft der Build still mit
+        # Platzhalter-Werten durch und die Login-Seite ist live kaputt.
+        env:
+          PUBLIC_SUPABASE_URL: ${{ secrets.PUBLIC_SUPABASE_URL }}
+          PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$PUBLIC_SUPABASE_URL" ] || [ -z "$PUBLIC_SUPABASE_ANON_KEY" ]; then
+            echo "::error::PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_ANON_KEY fehlen. Bitte als Repository-Secrets anlegen (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          fi
+
       - name: Build
         run: npm run build
         env:
