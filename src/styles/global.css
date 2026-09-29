@@ -10,6 +10,8 @@
 
   --max-width: 46rem;
 
+  /* Hell = Standard */
+  color-scheme: light;
   --bg: #ffffff;
   --bg-subtle: #f6f7f9;
   --text: #1a1a1a;
@@ -19,8 +21,22 @@
   --accent-hover: #5b21b6;
 }
 
+/* Dunkel: explizit gewählt … */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --bg-subtle: #171a21;
+  --text: #e8eaed;
+  --text-muted: #9aa0aa;
+  --border: #262b34;
+  --accent: #a78bfa;
+  --accent-hover: #c4b5fd;
+}
+
+/* … oder Systemeinstellung, solange nicht explizit „hell" gewählt wurde */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #0f1115;
     --bg-subtle: #171a21;
     --text: #e8eaed;
@@ -35,6 +51,11 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+/* Das hidden-Attribut soll immer greifen, egal welche display-Regel sonst gilt. */
+[hidden] {
+  display: none !important;
 }
 
 html {
@@ -75,10 +96,12 @@ h4 {
 h1 {
   font-size: clamp(2rem, 5vw, 2.75rem);
 }
+
 h2 {
   font-size: clamp(1.5rem, 3.5vw, 1.9rem);
   margin-top: 2.5rem;
 }
+
 h3 {
   font-size: 1.25rem;
 }
@@ -92,6 +115,7 @@ a {
   text-decoration: none;
   text-underline-offset: 3px;
 }
+
 a:hover {
   color: var(--accent-hover);
   text-decoration: underline;
@@ -113,6 +137,7 @@ pre {
   padding: 1rem 1.2rem;
   overflow-x: auto;
 }
+
 pre code {
   background: none;
   padding: 0;

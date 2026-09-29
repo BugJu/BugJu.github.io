@@ -1,0 +1,268 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Admin – BugJu" description="Administrationsbereich.">
+  <section class="admin">
+    <header class="admin-header">
+      <div>
+        <h1>Adminbereich</h1>
+        <p class="text-muted" id="admin-user">Status wird geprüft …</p>
+      </div>
+    </header>
+
+    <div id="admin-loading" class="text-muted">Wird geladen …</div>
+
+    <div id="admin-denied" hidden>
+      <p>Kein Zugriff – dieser Bereich ist nur für Administratoren.</p>
+      <p>
+        <a class="btn" href="/login?redirect=/admin">Zum Login</a>
+      </p>
+    </div>
+
+    <div id="admin-area" hidden>
+      <section class="panel">
+        <h2>Mitglieder</h2>
+        <p class="text-muted">
+          Rolle per Klick wechseln. <strong>Admin</strong> darf Mitglieder
+          verwalten, <strong>Mitglied</strong> hat nur Lesezugriff.
+        </p>
+        <ul id="user-list" class="user-list"></ul>
+        <p id="user-empty" class="text-muted" hidden>Keine Mitglieder gefunden.</p>
+        <p id="user-error" class="form-error" hidden></p>
+      </section>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
+  const escapeHtml = (value: string): string =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  (async () => {
+    const loadingEl = document.getElementById('admin-loading');
+    const deniedEl = document.getElementById('admin-denied');
+    const areaEl = document.getElementById('admin-area');
+    const userEl = document.getElementById('admin-user');
+
+    const userListEl = document.getElementById('user-list');
+    const userEmptyEl = document.getElementById('user-empty');
+    const userErrorEl = document.getElementById('user-error');
+
+    const showDenied = (msg: string) => {
+      if (loadingEl) loadingEl.hidden = true;
+      if (areaEl) areaEl.hidden = true;
+      if (deniedEl) deniedEl.hidden = false;
+      if (userEl) userEl.textContent = msg;
+    };
+
+    if (!isSupabaseConfigured) {
+      showDenied('Konfiguration fehlt (Supabase).');
+      return;
+    }
+
+    // --- Zugriff prüfen: nur Admins dürfen hier weiter ---
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    if (!session) {
+      window.location.replace('/login?redirect=/admin');
+      return;
+    }
+
+    const { data: roleRow } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    const myRole = (roleRow?.role as string) ?? 'member';
+    if (myRole !== 'admin') {
+      showDenied('Angemeldet, aber ohne Admin-Rechte.');
+      return;
+    }
+
+    if (userEl) userEl.textContent = `${session.user.email ?? 'Admin'} · Rolle: admin`;
+    if (loadingEl) loadingEl.hidden = true;
+    if (areaEl) areaEl.hidden = false;
+
+    // ============================================================
+    // Mitglieder & Rollen
+    // ============================================================
+    const renderRoleToggle = (userId: string, role: string) => `
+      <div class="role-toggle" data-user="${userId}" role="group" aria-label="Rolle">
+        <button type="button" class="role-opt${role === 'member' ? ' is-active' : ''}" data-role="member">Mitglied</button>
+        <button type="button" class="role-opt${role === 'admin' ? ' is-active' : ''}" data-role="admin">Admin</button>
+      </div>`;
+
+    const loadUsers = async () => {
+      const { data, error } = await supabase.rpc('admin_list_users');
+      if (error) {
+        if (userErrorEl) {
+          userErrorEl.textContent = 'Mitglieder konnten nicht geladen werden: ' + error.message;
+          userErrorEl.hidden = false;
+        }
+        return;
+      }
+
+      const rows = (data ?? []) as { user_id: string; email: string; role: string }[];
+      if (rows.length === 0) {
+        if (userListEl) userListEl.innerHTML = '';
+        if (userEmptyEl) userEmptyEl.hidden = false;
+        return;
+      }
+      if (userEmptyEl) userEmptyEl.hidden = true;
+
+      if (userListEl) {
+        userListEl.innerHTML = rows
+          .map(
+            (u) => `
+              <li>
+                <span class="user-email">${escapeHtml(u.email)}</span>
+                ${renderRoleToggle(u.user_id, u.role)}
+              </li>`
+          )
+          .join('');
+      }
+    };
+
+    userListEl?.addEventListener('click', async (event) => {
+      const btn = (event.target as HTMLElement).closest<HTMLButtonElement>('.role-opt');
+      if (!btn || btn.classList.contains('is-active')) return;
+
+      const toggle = btn.closest<HTMLElement>('.role-toggle');
+      const userId = toggle?.getAttribute('data-user');
+      const newRole = btn.getAttribute('data-role');
+      if (!userId || !newRole) return;
+
+      if (userErrorEl) userErrorEl.hidden = true;
+      const buttons = toggle?.querySelectorAll<HTMLButtonElement>('.role-opt');
+      buttons?.forEach((b) => (b.disabled = true));
+
+      const { error } = await supabase.rpc('admin_set_role', {
+        target: userId,
+        new_role: newRole,
+      });
+
+      buttons?.forEach((b) => (b.disabled = false));
+
+      if (error) {
+        if (userErrorEl) {
+          userErrorEl.textContent = 'Rolle ändern fehlgeschlagen: ' + error.message;
+          userErrorEl.hidden = false;
+        }
+        return;
+      }
+
+      buttons?.forEach((b) => b.classList.toggle('is-active', b === btn));
+
+      // Wenn man sich selbst die Admin-Rechte nimmt: Zugriff neu prüfen.
+      if (userId === session.user.id && newRole !== 'admin') {
+        window.location.reload();
+      }
+    });
+
+    await loadUsers();
+  })();
+</script>
+
+<style>
+  .admin-header p {
+    margin-top: 0.25rem;
+  }
+
+  .panel {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+    background: var(--bg-subtle);
+  }
+  .panel h2 {
+    margin-top: 0;
+  }
+
+  .user-list {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0 0;
+  }
+  .user-list > li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .user-list > li:last-child {
+    border-bottom: none;
+  }
+  .user-email {
+    font-size: 0.95rem;
+  }
+
+  /* Rollen-Umschalter im Stil der Landing-Page-Buttons */
+  .role-toggle {
+    display: inline-flex;
+    gap: 0.5rem;
+  }
+  .role-opt {
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.5rem 1.1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  .role-opt:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .role-opt.is-active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .role-opt.is-active:hover {
+    background: var(--accent-hover);
+    color: #fff;
+  }
+  .role-opt:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+
+  .form-error {
+    margin: 0.75rem 0 0;
+    color: #dc2626;
+    font-size: 0.9rem;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 0.55rem 1.1rem;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.9rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    text-decoration: none;
+  }
+  .btn:hover {
+    background: var(--accent-hover);
+  }
+</style>

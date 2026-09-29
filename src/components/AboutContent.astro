@@ -1,14 +1,110 @@
 <p>
-  Hi, ich bin <strong>BugJu</strong> – Entwickler und Bastler. Ich mag es,
-  Dinge von Grund auf zu bauen, Neues auszuprobieren und das Gelernte
-  aufzuschreiben.
+  Hi, ich bin David. Ich studiere <strong>Informatik (M.Sc.) an der
+  Technischen Universität Berlin</strong> und baue am liebsten selbst: von
+  kleinen Tools bis zu kompletten Webanwendungen.
 </p>
 
 <p>
-  Dieser Ort hier ist mein persönliches Portfolio und Blog. Hauptsächlich
-  schreibe ich über Softwareentwicklung, Tools, die mir gefallen, und
-  Projekte, an denen ich gerade sitze.
+  Programmieren begleitet mich schon eine ganze Weile – vom Bachelorstudium
+  der Informatik an der TU Dortmund bis hinein in die Praxis, unter anderem
+  als <strong>Software- &amp; QA-Entwickler bei der Rhenus SE &amp; Co.
+  KG</strong>. Dabei habe ich gelernt, Software nicht nur zu schreiben,
+  sondern auch sauber zu testen und strukturiert zu denken. Am liebsten
+  arbeite ich mit <strong>Java</strong> und <strong>Python</strong>. Dazu
+  kommt immer wieder Neues wie <strong>Kotlin</strong> oder
+  <strong> JavaScript/TypeScript</strong>.
 </p>
+
+<p>
+  Diese Seite ist mein persönliches Portfolio und Blog. Hier sammle ich meine
+  Projekte, schreibe über Dinge, die mir beim Entwickeln begegnen, und teile,
+  was ich unterwegs lerne.
+</p>
+
+<h3>Ausbildung</h3>
+<ol class="timeline">
+  <li>
+    <span class="time">seit 04/2026</span>
+    <div>
+      <strong>Technische Universität Berlin</strong>
+      <span class="role">Informatik (M.Sc.)</span>
+    </div>
+  </li>
+  <li>
+    <span class="time">10/2022 – 03/2026</span>
+    <div>
+      <strong>Technische Universität Dortmund</strong>
+      <span class="role">Informatik (B.Sc.)</span>
+    </div>
+  </li>
+  <li>
+    <span class="time">10/2021 – 09/2022</span>
+    <div>
+      <strong>Universität Münster</strong>
+      <span class="role">Informatik (B.Sc.)</span>
+    </div>
+  </li>
+  <li>
+    <span class="time">2013 – 2021</span>
+    <div>
+      <strong>Kardinal-von-Galen-Gymnasium</strong>
+      <span class="role">Münster-Hiltrup</span>
+    </div>
+  </li>
+</ol>
+
+<h3>Berufserfahrung</h3>
+<ol class="timeline">
+  <li>
+    <span class="time">07/2022 – 04/2026</span>
+    <div>
+      <strong>Rhenus SE &amp; Co. KG</strong>
+      <span class="role">Software- &amp; QA-Entwickler</span>
+    </div>
+  </li>
+  <li>
+    <span class="time">08/2021 – 06/2022</span>
+    <div>
+      <strong>Agravis Raiffeisen AG</strong>
+      <span class="role">Workplace-Management</span>
+    </div>
+  </li>
+  <li>
+    <span class="time">09/2019</span>
+    <div>
+      <strong>Olympus Soft Imaging Solutions</strong>
+      <span class="role">Berufspraktikum</span>
+    </div>
+  </li>
+  <li>
+    <span class="time">04/2018</span>
+    <div>
+      <strong>Beckhoff Automation GmbH &amp; Co. KG</strong>
+      <span class="role">Tagespraktikum</span>
+    </div>
+  </li>
+</ol>
+
+<h3>Kenntnisse</h3>
+<div class="skills">
+  <div>
+    <h4>Programmiersprachen</h4>
+    <ul>
+      <li>Java <span class="level">– gute Kenntnisse</span></li>
+      <li>Python <span class="level">– gute Kenntnisse</span></li>
+      <li>Kotlin <span class="level">– Grundkenntnisse</span></li>
+      <li>JavaScript / TypeScript <span class="level">– Grundkenntnisse</span></li>
+    </ul>
+  </div>
+  <div>
+    <h4>Sprachen</h4>
+    <ul>
+      <li>Deutsch <span class="level">– Muttersprache</span></li>
+      <li>Englisch <span class="level">– fließend</span></li>
+      <li>Spanisch <span class="level">– Grundkenntnisse</span></li>
+    </ul>
+  </div>
+</div>
 
 <h3>Links</h3>
 <ul>
@@ -19,3 +115,65 @@
   </li>
   <li><a href="/rss.xml">RSS-Feed</a></li>
 </ul>
+
+<style>
+  .timeline {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0;
+  }
+  .timeline > li {
+    display: flex;
+    gap: 1rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .timeline > li:last-child {
+    border-bottom: none;
+  }
+  .timeline .time {
+    flex: 0 0 9.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .timeline strong {
+    display: block;
+  }
+  .timeline .role {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+
+  .skills {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+  }
+  .skills h4 {
+    margin: 0 0 0.35rem;
+    font-size: 1rem;
+  }
+  .skills ul {
+    margin: 0;
+    padding-left: 1.1rem;
+  }
+  .skills li {
+    margin: 0.2rem 0;
+  }
+  .skills .level {
+    color: var(--text-muted);
+  }
+
+  @media (max-width: 34rem) {
+    .timeline > li {
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+    .skills {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

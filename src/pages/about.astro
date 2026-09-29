@@ -1,10 +1,175 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import ProjectsList from '../components/ProjectsList.astro';
 import AboutContent from '../components/AboutContent.astro';
 ---
 
-<BaseLayout title="Über mich – BugJu" description="Über BugJu.">
-  <h1>Über mich</h1>
-  <AboutContent />
+<BaseLayout
+  title="David Jansen (BugJu) – Portfolio & Blog"
+  description="David Jansen (BugJu) – Informatik-Student an der TU Berlin. Portfolio, Projekte und Blog."
+>
+  <!-- Start -->
+  <section id="start" class="page-section">
+    <div class="hero">
+      <h1>Hallo, ich bin David 👋</h1>
+      <p class="lead text-muted">
+        Informatik-Student an der TU Berlin. Hier teile ich meine Projekte und
+        schreibe über Dinge, die mich beim Bauen beschäftigen.
+      </p>
+      <p>
+        <a class="btn" href="#projects">Projekte ansehen</a>
+      </p>
+      <span class="scroll-hint" aria-hidden="true">Weiter scrollen ↓</span>
+    </div>
+  </section>
+
+  <!-- Projekte -->
+  <section id="projects" class="page-section">
+    <h2>Projekte</h2>
+    <p class="text-muted">Eine Auswahl der Dinge, an denen ich arbeite.</p>
+    <ProjectsList />
+  </section>
+
+  <!-- Über mich -->
+  <section id="about" class="page-section">
+    <h2>Über mich</h2>
+    <AboutContent />
+  </section>
 </BaseLayout>
 
+<script>
+  // Scrollspy (aktive Nav-Markierung) + Hintergrund-Verlauf ins Hellere.
+  // Läuft nur, wenn die Sektionen existieren (also nur auf der Startseite).
+  const sections = ['start', 'projects', 'about']
+    .map((id) => document.getElementById(id))
+    .filter((el): el is HTMLElement => Boolean(el));
+
+  if (sections.length) {
+    const root = document.documentElement;
+
+    const navLinks = new Map(
+      Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-nav]')).map(
+        (el) => [el.dataset.nav, el] as const
+      )
+    );
+
+    // Farbskala je Modus: oben kräftig getönt -> unten hell.
+    const lightMode = { from: [206, 196, 240], to: [255, 255, 255] };
+    const darkMode = { from: [13, 15, 20], to: [46, 38, 72] };
+
+    const lerp = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
+
+    const update = () => {
+      // 1) Sektion mit der größten Sichtbarkeit im Viewport markieren.
+      //    Das fühlt sich natürlicher an als eine feste Linie und funktioniert
+      //    auch für die unterste Sektion, die nie ganz oben ankommt.
+      const viewportHeight = window.innerHeight;
+      let activeId = sections[0].id;
+      let maxVisible = -1;
+      for (const section of sections) {
+        const rect = section.getBoundingClientRect();
+        const visible =
+          Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0);
+        if (visible > maxVisible) {
+          maxVisible = visible;
+          activeId = section.id;
+        }
+      }
+      navLinks.forEach((el, key) =>
+        el.classList.toggle('active', key === activeId)
+      );
+
+      // 2) Hintergrund je Scroll-Fortschritt aufhellen.
+      const maxScroll = root.scrollHeight - window.innerHeight;
+      const t =
+        maxScroll > 0 ? Math.min(1, Math.max(0, window.scrollY / maxScroll)) : 0;
+
+      const scale = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? darkMode
+        : lightMode;
+
+      const r = lerp(scale.from[0], scale.to[0], t);
+      const g = lerp(scale.from[1], scale.to[1], t);
+      const b = lerp(scale.from[2], scale.to[2], t);
+      root.style.setProperty('--page-bg', `rgb(${r} ${g} ${b})`);
+    };
+
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+  }
+</script>
+
+<!-- Gilt global, damit Anker-Sprünge & Hintergrund die Seite betreffen. -->
+<style is:global>
+  html {
+    /* Ziel-Offset für Anker-Sprünge (Header-Höhe wird per JS gesetzt). */
+    scroll-padding-top: var(--header-h, 4rem);
+    scroll-behavior: smooth;
+  }
+
+  /* Kompakte Abstände zwischen den Sektionen (kein Vollbild mehr). */
+  .page-section {
+    scroll-margin-top: var(--header-h, 4rem);
+    padding-block: 2.5rem;
+  }
+  .page-section:first-child {
+    padding-top: 0.5rem;
+  }
+
+  /* Hintergrundfarbe wird per JS (Scroll-Fortschritt) ins Hellere verändert. */
+  html body {
+    background-color: var(--page-bg, var(--bg));
+  }
+</style>
+
+<style>
+  .hero {
+    padding: 1rem 0 2rem;
+  }
+  .lead {
+    font-size: 1.15rem;
+    max-width: 40rem;
+  }
+
+  .btn {
+    display: inline-block;
+    margin: 0.5rem 0.5rem 0.5rem 0;
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    background: var(--accent);
+    color: #fff !important;
+    text-decoration: none !important;
+  }
+  .btn:hover {
+    background: var(--accent-hover);
+  }
+
+  .scroll-hint {
+    display: inline-block;
+    margin-top: 1.5rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    animation: bounce 1.8s ease-in-out infinite;
+  }
+
+  @keyframes bounce {
+    0%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.7;
+    }
+    50% {
+      transform: translateY(4px);
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scroll-hint {
+      animation: none;
+    }
+  }
+</style>

@@ -29,8 +29,49 @@ const isHome = Astro.url.pathname === '/';
       }
       <li class="auth">
         <a href="/login" data-auth="login">Anmelden</a>
-        <a href="/members" data-auth="members" hidden>Mitglieder</a>
+        <a href="/admin" data-auth="admin" hidden>Admin</a>
         <button type="button" data-auth="logout" hidden>Abmelden</button>
+      </li>
+      <li class="theme">
+        <button
+          type="button"
+          class="theme-toggle"
+          id="theme-toggle"
+          aria-label="Farbmodus umschalten"
+          title="Hell / Dunkel umschalten"
+        >
+          <svg
+            class="icon-moon"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+          <svg
+            class="icon-sun"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="4"></circle>
+            <path
+              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"
+            ></path>
+          </svg>
+        </button>
       </li>
     </ul>
   </nav>
@@ -38,6 +79,7 @@ const isHome = Astro.url.pathname === '/';
 
 <script>
   import { supabase, isSupabaseConfigured } from '../lib/supabase';
+  import { isAdmin } from '../lib/roles';
 
   // Sticky-Header-Höhe messen und als CSS-Variable bereitstellen,
   // damit Anker-Sprünge exakt unter dem Header landen.
@@ -49,15 +91,33 @@ const isHome = Astro.url.pathname === '/';
     );
   }
 
-  // Zeigt "Anmelden" bzw. "Mitglieder/Abmelden" je nach Login-Status.
+  // Farbmodus-Umschalter (Mond/Sonne). Läuft unabhängig vom Login-Teil.
+  const themeToggle = document.getElementById('theme-toggle');
+  themeToggle?.addEventListener('click', () => {
+    const isDark =
+      document.documentElement.getAttribute('data-theme') === 'dark';
+    const next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try {
+      localStorage.setItem('theme', next);
+    } catch {
+      /* localStorage nicht verfügbar – egal */
+    }
+    themeToggle.setAttribute('aria-pressed', String(next === 'dark'));
+    // Andere Skripte (z. B. der Hintergrund-Verlauf) informieren.
+    document.dispatchEvent(new CustomEvent('themechange'));
+  });
+
+  // Zeigt "Anmelden" bzw. "Admin/Abmelden" je nach Login-Status
+  // und Rolle (Admin-Link nur für Admins).
   (async () => {
     const loginLink = document.querySelector<HTMLAnchorElement>('[data-auth="login"]');
-    const membersLink = document.querySelector<HTMLAnchorElement>('[data-auth="members"]');
+    const adminLink = document.querySelector<HTMLAnchorElement>('[data-auth="admin"]');
     const logoutBtn = document.querySelector<HTMLButtonElement>('[data-auth="logout"]');
 
-    const apply = (loggedIn: boolean) => {
+    const apply = (loggedIn: boolean, admin = false) => {
       if (loginLink) loginLink.hidden = loggedIn;
-      if (membersLink) membersLink.hidden = !loggedIn;
+      if (adminLink) adminLink.hidden = !admin;
       if (logoutBtn) logoutBtn.hidden = !loggedIn;
     };
 
@@ -67,9 +127,11 @@ const isHome = Astro.url.pathname === '/';
     }
 
     const { data } = await supabase.auth.getSession();
-    apply(Boolean(data.session));
+    apply(Boolean(data.session), data.session ? await isAdmin() : false);
 
-    supabase.auth.onAuthStateChange((_event, session) => apply(Boolean(session)));
+    supabase.auth.onAuthStateChange(async (_event, session) => {
+      apply(Boolean(session), session ? await isAdmin() : false);
+    });
 
     logoutBtn?.addEventListener('click', async () => {
       await supabase.auth.signOut();
@@ -137,6 +199,7 @@ const isHome = Astro.url.pathname === '/';
   .auth {
     display: flex;
     align-items: center;
+    gap: 1rem;
   }
   .auth button {
     background: none;
@@ -152,5 +215,36 @@ const isHome = Astro.url.pathname === '/';
   .auth button:hover {
     color: var(--text);
     text-decoration: underline;
+  }
+
+  /* Farbmodus-Umschalter */
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease,
+      background-color 0.15s ease;
+  }
+  .theme-toggle:hover {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  /* Hell: Mond anzeigen · Dunkel: Sonne anzeigen */
+  .theme-toggle .icon-sun {
+    display: none;
+  }
+  [data-theme="dark"] .theme-toggle .icon-moon {
+    display: none;
+  }
+  [data-theme="dark"] .theme-toggle .icon-sun {
+    display: block;
   }
 </style>

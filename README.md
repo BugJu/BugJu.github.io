@@ -2,9 +2,9 @@
 
 Meine persönliche Webseite – Portfolio und kleiner Blog.
 
-Hi, ich bin BugJu. Auf dieser Seite sammle ich meine Projekte, schreibe hin
-und wieder über Dinge, die mich beim Entwickeln beschäftigen, und stelle
-mich kurz vor.
+Hi, ich bin **David Jansen** (BugJu) – Informatik-Student an der TU Berlin.
+Auf dieser Seite sammle ich meine Projekte, schreibe hin und wieder über
+Dinge, die mich beim Entwickeln beschäftigen, und stelle mich kurz vor.
 
 ## Inhalt
 
