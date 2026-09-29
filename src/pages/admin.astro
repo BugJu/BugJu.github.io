@@ -25,7 +25,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <h2>Mitglieder</h2>
         <p class="text-muted">
           Rolle per Klick wechseln. <strong>Admin</strong> darf Mitglieder
-          verwalten, <strong>Mitglied</strong> hat nur Lesezugriff.
+          verwalten, <strong>Mitglied</strong> hat nur Lesezugriff. Die eigene
+          Rolle lässt sich nicht ändern.
         </p>
         <ul id="user-list" class="user-list"></ul>
         <p id="user-empty" class="text-muted" hidden>Keine Mitglieder gefunden.</p>
@@ -96,9 +97,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     // Mitglieder & Rollen
     // ============================================================
     const renderRoleToggle = (userId: string, role: string) => `
-      <div class="role-toggle" data-user="${userId}" role="group" aria-label="Rolle">
-        <button type="button" class="role-opt${role === 'member' ? ' is-active' : ''}" data-role="member">Mitglied</button>
-        <button type="button" class="role-opt${role === 'admin' ? ' is-active' : ''}" data-role="admin">Admin</button>
+      <div class="role-toggle" data-user="${userId}" role="group" aria-label="Rolle ändern">
+        <button type="button" class="role-opt${role === 'member' ? ' is-active' : ''}" data-role="member" aria-pressed="${role === 'member'}">Mitglied</button>
+        <button type="button" class="role-opt${role === 'admin' ? ' is-active' : ''}" data-role="admin" aria-pressed="${role === 'admin'}">Admin</button>
       </div>`;
 
     const loadUsers = async () => {
@@ -119,15 +120,25 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       }
       if (userEmptyEl) userEmptyEl.hidden = true;
 
+      const myId = session.user.id;
       if (userListEl) {
         userListEl.innerHTML = rows
-          .map(
-            (u) => `
-              <li>
-                <span class="user-email">${escapeHtml(u.email)}</span>
-                ${renderRoleToggle(u.user_id, u.role)}
-              </li>`
-          )
+          .map((u) => {
+            const isSelf = u.user_id === myId;
+            const roleLabel = u.role === 'admin' ? 'Admin' : 'Mitglied';
+            return `
+              <li${isSelf ? ' class="is-self"' : ''}>
+                <span class="user-email">
+                  ${escapeHtml(u.email)}
+                  ${isSelf ? '<span class="self-badge">Du</span>' : ''}
+                </span>
+                ${
+                  isSelf
+                    ? `<span class="role-badge role-${u.role === 'admin' ? 'admin' : 'member'}">${roleLabel}</span>`
+                    : renderRoleToggle(u.user_id, u.role)
+                }
+              </li>`;
+          })
           .join('');
       }
     };
@@ -140,6 +151,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       const userId = toggle?.getAttribute('data-user');
       const newRole = btn.getAttribute('data-role');
       if (!userId || !newRole) return;
+
+      // Die eigene Rolle darf nicht geändert werden – nur die anderer.
+      if (userId === session.user.id) return;
 
       if (userErrorEl) userErrorEl.hidden = true;
       const buttons = toggle?.querySelectorAll<HTMLButtonElement>('.role-opt');
@@ -160,12 +174,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         return;
       }
 
-      buttons?.forEach((b) => b.classList.toggle('is-active', b === btn));
-
-      // Wenn man sich selbst die Admin-Rechte nimmt: Zugriff neu prüfen.
-      if (userId === session.user.id && newRole !== 'admin') {
-        window.location.reload();
-      }
+      buttons?.forEach((b) => {
+        const active = b === btn;
+        b.classList.toggle('is-active', active);
+        b.setAttribute('aria-pressed', String(active));
+      });
     });
 
     await loadUsers();
@@ -209,31 +222,35 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     font-size: 0.95rem;
   }
 
-  /* Rollen-Umschalter im Stil der Landing-Page-Buttons */
+  /* Rollen-Umschalter: Segment-Control im Stil der Anwendung */
   .role-toggle {
     display: inline-flex;
-    gap: 0.5rem;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
   }
   .role-opt {
     font: inherit;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 600;
-    padding: 0.5rem 1.1rem;
-    border-radius: 8px;
-    border: 1px solid var(--border);
+    line-height: 1;
+    padding: 0.45rem 1rem;
+    border: none;
+    border-radius: 999px;
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
-    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
   .role-opt:hover {
-    border-color: var(--accent);
     color: var(--text);
   }
   .role-opt.is-active {
     background: var(--accent);
     color: #fff;
-    border-color: var(--accent);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
   }
   .role-opt.is-active:hover {
     background: var(--accent-hover);
@@ -244,6 +261,51 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     cursor: wait;
   }
 
+  /* Eigene Zeile: Rolle nicht änderbar, nur als Badge sichtbar */
+  .user-list > li.is-self .user-email {
+    color: var(--text-muted);
+  }
+  .self-badge {
+    display: inline-block;
+    margin-left: 0.4rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+    vertical-align: middle;
+  }
+  .role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 1rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1;
+    border: 1px solid var(--border);
+  }
+  .role-badge::before {
+    content: '';
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .role-badge.role-admin {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
+  .role-badge.role-member {
+    color: var(--text-muted);
+    background: var(--bg);
+  }
+
   .form-error {
     margin: 0.75rem 0 0;
     color: #dc2626;
@@ -252,7 +314,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
   .btn {
     display: inline-block;
-    padding: 0.55rem 1.1rem;
+    padding: 0.6rem 1.2rem;
     border-radius: 8px;
     font: inherit;
     font-weight: 600;
@@ -261,8 +323,12 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     color: #fff;
     border: none;
     text-decoration: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    transition: background-color 0.15s ease;
   }
   .btn:hover {
     background: var(--accent-hover);
+    color: #fff;
+    text-decoration: none;
   }
 </style>
