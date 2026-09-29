@@ -30,6 +30,7 @@ const isHome = Astro.url.pathname === '/';
       <li class="auth">
         <a href="/login" data-auth="login">Anmelden</a>
         <a href="/admin" data-auth="admin" hidden>Admin</a>
+        <a href="/kalender" data-auth="calendar" hidden>Kalender</a>
         <button type="button" data-auth="logout" hidden>Abmelden</button>
       </li>
       <li class="theme">
@@ -113,11 +114,13 @@ const isHome = Astro.url.pathname === '/';
   (async () => {
     const loginLink = document.querySelector<HTMLAnchorElement>('[data-auth="login"]');
     const adminLink = document.querySelector<HTMLAnchorElement>('[data-auth="admin"]');
+    const calendarLink = document.querySelector<HTMLAnchorElement>('[data-auth="calendar"]');
     const logoutBtn = document.querySelector<HTMLButtonElement>('[data-auth="logout"]');
 
     const apply = (loggedIn: boolean, admin = false) => {
       if (loginLink) loginLink.hidden = loggedIn;
       if (adminLink) adminLink.hidden = !admin;
+      if (calendarLink) calendarLink.hidden = !admin;
       if (logoutBtn) logoutBtn.hidden = !loggedIn;
     };
 

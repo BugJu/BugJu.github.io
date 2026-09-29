@@ -1,0 +1,772 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Kalender – BugJu" description="Terminkalender (nur für Admins).">
+  <section class="calendar-page">
+    <header class="page-head">
+      <h1>Kalender</h1>
+      <p class="text-muted" id="cal-user">Status wird geprüft …</p>
+    </header>
+
+    <div id="cal-loading" class="text-muted">Wird geladen …</div>
+
+    <div id="cal-denied" hidden>
+      <p>Kein Zugriff – der Kalender ist nur für Administratoren sichtbar.</p>
+      <p>
+        <a class="btn" href="/login?redirect=/kalender">Zum Login</a>
+      </p>
+    </div>
+
+    <div id="cal-area" hidden>
+      <p id="cal-notice" class="cal-notice" hidden></p>
+
+      <section class="panel">
+        <div class="cal-toolbar">
+          <button type="button" class="icon-btn" id="cal-prev" aria-label="Vorheriger Monat">‹</button>
+          <h2 id="cal-label" aria-live="polite">…</h2>
+          <button type="button" class="icon-btn" id="cal-next" aria-label="Nächster Monat">›</button>
+        </div>
+
+        <div class="cal-dow" aria-hidden="true"></div>
+        <div class="cal-grid" id="cal-grid"></div>
+
+        <div class="cal-toolbar-foot">
+          <button type="button" class="btn ghost" id="cal-today">Heute</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 id="day-title">Termine</h2>
+
+        <ul id="day-events" class="event-list"></ul>
+        <p id="day-empty" class="text-muted" hidden>
+          Keine Termine an diesem Tag.
+        </p>
+
+        <form id="event-form" class="event-form" novalidate>
+          <div class="event-form-row">
+            <input
+              id="event-title"
+              name="title"
+              type="text"
+              placeholder="Titel des Termins"
+              autocomplete="off"
+              required
+            />
+            <input
+              id="event-time"
+              name="time"
+              type="time"
+              aria-label="Uhrzeit (optional)"
+            />
+            <button type="submit" class="btn" id="event-submit">Hinzufügen</button>
+          </div>
+        </form>
+
+        <p id="cal-error" class="form-error" hidden></p>
+      </section>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
+  const escapeHtml = (value: string): string =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const MONTHS = [
+    'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+    'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
+  ];
+  const DOW = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+  type Entry = {
+    id: string;
+    title: string;
+    event_date: string;
+    start_time: string | null;
+  };
+
+  (async () => {
+    const loadingEl = document.getElementById('cal-loading');
+    const deniedEl = document.getElementById('cal-denied');
+    const areaEl = document.getElementById('cal-area');
+    const userEl = document.getElementById('cal-user');
+
+    const gridEl = document.getElementById('cal-grid');
+    const labelEl = document.getElementById('cal-label');
+    const dowEl = document.querySelector('.cal-dow');
+    const prevBtn = document.getElementById('cal-prev');
+    const nextBtn = document.getElementById('cal-next');
+    const todayBtn = document.getElementById('cal-today');
+
+    const dayTitleEl = document.getElementById('day-title');
+    const dayEventsEl = document.getElementById('day-events');
+    const dayEmptyEl = document.getElementById('day-empty');
+    const errorEl = document.getElementById('cal-error');
+    const formEl = document.getElementById('event-form') as HTMLFormElement | null;
+    const titleInput = document.getElementById('event-title') as HTMLInputElement | null;
+    const timeInput = document.getElementById('event-time') as HTMLInputElement | null;
+    const submitBtn = document.getElementById('event-submit') as HTMLButtonElement | null;
+
+    const showDenied = (msg: string) => {
+      if (loadingEl) loadingEl.hidden = true;
+      if (areaEl) areaEl.hidden = true;
+      if (deniedEl) deniedEl.hidden = false;
+      if (userEl) userEl.textContent = msg;
+    };
+
+    const showError = (msg: string) => {
+      if (!errorEl) return;
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+    };
+
+    if (!isSupabaseConfigured) {
+      showDenied('Konfiguration fehlt (Supabase).');
+      return;
+    }
+
+    // --- Zugriff prüfen: nur Admins ---
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    if (!session) {
+      window.location.replace('/login?redirect=/kalender');
+      return;
+    }
+
+    const { data: roleRow } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    if (((roleRow?.role as string) ?? 'member') !== 'admin') {
+      showDenied('Angemeldet, aber ohne Admin-Rechte.');
+      return;
+    }
+
+    if (userEl) userEl.textContent = `${session.user.email ?? 'Admin'} · Admin`;
+    if (loadingEl) loadingEl.hidden = true;
+    if (areaEl) areaEl.hidden = false;
+
+    // ============================================================
+    // Kalender-Logik
+    // ============================================================
+    const toISO = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate()
+      ).padStart(2, '0')}`;
+    const todayISO = toISO(new Date());
+
+    let entries: Entry[] = [];
+    let viewYear = new Date().getFullYear();
+    let viewMonth = new Date().getMonth();
+    let selectedISO = todayISO;
+
+    const noticeEl = document.getElementById('cal-notice');
+    const LOCAL_KEY = 'bugju-calendar-entries';
+    let mode: 'remote' | 'local' = 'remote';
+
+    const loadLocal = (): Entry[] => {
+      try {
+        return JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '[]') as Entry[];
+      } catch {
+        return [];
+      }
+    };
+    const saveLocal = (list: Entry[]) => {
+      try {
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(list));
+      } catch {
+        /* localStorage nicht verfügbar */
+      }
+    };
+    const isMissingTable = (err: { code?: string; message?: string } | null) =>
+      !!err &&
+      (err.code === '42P01' ||
+        /does not exist|schema cache|relation/i.test(err.message ?? ''));
+
+    const useLocalMode = () => {
+      mode = 'local';
+      entries = loadLocal();
+      if (noticeEl) {
+        noticeEl.textContent =
+          'Hinweis: Die Supabase-Tabelle "calendar_entries" existiert noch nicht – ' +
+          'Termine werden momentan nur lokal in diesem Browser gespeichert. Für ' +
+          'geräteübergreifende Speicherung einmalig supabase/calendar.sql im ' +
+          'Supabase SQL-Editor ausführen.';
+        noticeEl.hidden = false;
+      }
+    };
+
+    if (dowEl) dowEl.innerHTML = DOW.map((d) => `<span>${d}</span>`).join('');
+
+    const formatDayTitle = (iso: string) => {
+      const [y, m, d] = iso.split('-').map(Number);
+      const date = new Date(y, m - 1, d);
+      return date.toLocaleDateString('de-DE', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+    };
+
+    const renderGrid = () => {
+      if (!gridEl) return;
+      if (labelEl) labelEl.textContent = `${MONTHS[viewMonth]} ${viewYear}`;
+
+      const first = new Date(viewYear, viewMonth, 1);
+      const startOffset = (first.getDay() + 6) % 7; // Montag = 0
+      const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+      const totalCells = Math.ceil((startOffset + daysInMonth) / 7) * 7;
+      const startDate = new Date(viewYear, viewMonth, 1 - startOffset);
+
+      const cells: string[] = [];
+      for (let i = 0; i < totalCells; i++) {
+        const d = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth(),
+          startDate.getDate() + i
+        );
+        const iso = toISO(d);
+        const inMonth = d.getMonth() === viewMonth;
+        const isToday = iso === todayISO;
+        const isSelected = iso === selectedISO;
+        const dayEntries = entries.filter((e) => e.event_date === iso);
+
+        const classes = ['cal-cell'];
+        if (!inMonth) classes.push('is-other');
+        if (isToday) classes.push('is-today');
+        if (isSelected) classes.push('is-selected');
+
+        const MAX_VISIBLE = 3;
+        const chips = dayEntries
+          .slice(0, MAX_VISIBLE)
+          .map(
+            (e) => `
+              <span class="cal-event">
+                <span class="cal-event-dot"></span>
+                ${
+                  e.start_time
+                    ? `<span class="cal-event-time">${e.start_time.slice(0, 5)}</span>`
+                    : ''
+                }
+                <span class="cal-event-title">${escapeHtml(e.title)}</span>
+              </span>`
+          )
+          .join('');
+        const more =
+          dayEntries.length > MAX_VISIBLE
+            ? `<span class="cal-event-more">+${dayEntries.length - MAX_VISIBLE} weitere</span>`
+            : '';
+
+        cells.push(`
+          <button type="button" class="${classes.join(' ')}" data-date="${iso}">
+            <span class="cal-daynum">${d.getDate()}</span>
+            <span class="cal-events">${chips}${more}</span>
+          </button>`);
+      }
+      gridEl.innerHTML = cells.join('');
+    };
+
+    const renderDay = () => {
+      if (dayTitleEl) dayTitleEl.textContent = formatDayTitle(selectedISO);
+
+      const dayEntries = entries
+        .filter((e) => e.event_date === selectedISO)
+        .sort((a, b) => (a.start_time ?? '').localeCompare(b.start_time ?? ''));
+
+      if (dayEventsEl) {
+        dayEventsEl.innerHTML = dayEntries
+          .map(
+            (e) => `
+              <li class="event-item">
+                <span class="event-time">${e.start_time ? e.start_time.slice(0, 5) : '–'}</span>
+                <span class="event-title">${escapeHtml(e.title)}</span>
+                <button type="button" class="icon-btn danger" data-delete="${e.id}"
+                  aria-label="Termin löschen" title="Termin löschen">×</button>
+              </li>`
+          )
+          .join('');
+      }
+      if (dayEmptyEl) dayEmptyEl.hidden = dayEntries.length > 0;
+    };
+
+    const render = () => {
+      renderGrid();
+      renderDay();
+    };
+
+    const loadEntries = async () => {
+      if (mode === 'local') {
+        entries = loadLocal();
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('calendar_entries')
+        .select('id,title,event_date,start_time')
+        .order('event_date', { ascending: true });
+
+      if (error) {
+        if (isMissingTable(error)) {
+          useLocalMode();
+          return;
+        }
+        showError('Termine konnten nicht geladen werden: ' + error.message);
+        return;
+      }
+      if (errorEl) errorEl.hidden = true;
+      entries = (data ?? []) as Entry[];
+    };
+
+    const addEntry = async (title: string, time: string) => {
+      if (mode === 'remote') {
+        const { error } = await supabase.from('calendar_entries').insert({
+          title,
+          event_date: selectedISO,
+          start_time: time || null,
+        });
+        if (!error) {
+          await loadEntries();
+          return;
+        }
+        if (!isMissingTable(error)) {
+          showError('Speichern fehlgeschlagen: ' + error.message);
+          return;
+        }
+        useLocalMode();
+      }
+
+      const list = [
+        ...entries,
+        {
+          id: crypto.randomUUID(),
+          title,
+          event_date: selectedISO,
+          start_time: time || null,
+        } as Entry,
+      ];
+      saveLocal(list);
+      entries = list;
+    };
+
+    const removeEntry = async (id: string) => {
+      if (mode === 'remote') {
+        const { error } = await supabase
+          .from('calendar_entries')
+          .delete()
+          .eq('id', id);
+        if (!error) {
+          await loadEntries();
+          return;
+        }
+        if (!isMissingTable(error)) {
+          showError('Löschen fehlgeschlagen: ' + error.message);
+          return;
+        }
+        useLocalMode();
+      }
+
+      const list = entries.filter((e) => e.id !== id);
+      saveLocal(list);
+      entries = list;
+    };
+
+    prevBtn?.addEventListener('click', () => {
+      viewMonth -= 1;
+      if (viewMonth < 0) {
+        viewMonth = 11;
+        viewYear -= 1;
+      }
+      renderGrid();
+    });
+
+    nextBtn?.addEventListener('click', () => {
+      viewMonth += 1;
+      if (viewMonth > 11) {
+        viewMonth = 0;
+        viewYear += 1;
+      }
+      renderGrid();
+    });
+
+    todayBtn?.addEventListener('click', () => {
+      const now = new Date();
+      viewYear = now.getFullYear();
+      viewMonth = now.getMonth();
+      selectedISO = todayISO;
+      render();
+    });
+
+    gridEl?.addEventListener('click', (event) => {
+      const cell = (event.target as HTMLElement).closest<HTMLButtonElement>('.cal-cell');
+      if (!cell) return;
+      const iso = cell.getAttribute('data-date');
+      if (!iso) return;
+      selectedISO = iso;
+      // Ansicht auf den gewählten Monat ziehen, damit der Tag sichtbar ist.
+      const [y, m] = iso.split('-').map(Number);
+      viewYear = y;
+      viewMonth = m - 1;
+      render();
+    });
+
+    dayEventsEl?.addEventListener('click', async (event) => {
+      const btn = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-delete]');
+      if (!btn) return;
+      const id = btn.getAttribute('data-delete');
+      if (!id) return;
+
+      if (errorEl) errorEl.hidden = true;
+      btn.disabled = true;
+
+      await removeEntry(id);
+      render();
+    });
+
+    formEl?.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (errorEl) errorEl.hidden = true;
+
+      const title = (titleInput?.value ?? '').trim();
+      const time = (timeInput?.value ?? '').trim();
+      if (!title) {
+        showError('Bitte einen Titel eingeben.');
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Hinzufügen …';
+      }
+
+      await addEntry(title, time);
+
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Hinzufügen';
+      }
+
+      if (titleInput) titleInput.value = '';
+      if (timeInput) timeInput.value = '';
+      render();
+    });
+
+    await loadEntries();
+    render();
+  })();
+</script>
+
+<style is:global>
+  .page-head p {
+    margin-top: 0.25rem;
+  }
+
+  .panel {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+    background: var(--bg-subtle);
+  }
+  .panel h2 {
+    margin-top: 0;
+  }
+
+  /* Kopfzeile des Kalenders */
+  .cal-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .cal-toolbar h2 {
+    margin: 0;
+    font-size: 1.25rem;
+  }
+  .cal-toolbar-foot {
+    display: flex;
+    justify-content: center;
+    margin-top: 1rem;
+  }
+
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    font: inherit;
+    font-size: 1.1rem;
+    line-height: 1;
+    color: var(--text-muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease,
+      background-color 0.15s ease;
+  }
+  .icon-btn:hover {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .icon-btn.danger:hover {
+    color: #fff;
+    background: #dc2626;
+    border-color: #dc2626;
+  }
+
+  /* Wochentag-Kopf */
+  .cal-dow {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.25rem;
+    margin-top: 1rem;
+  }
+  .cal-dow span {
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+    padding-bottom: 0.25rem;
+  }
+
+  /* Tagesraster – große Felder im Stil des Apple-Kalenders */
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.4rem;
+  }
+  .cal-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+    min-height: 8rem;
+    padding: 0.5rem;
+    font: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    color: var(--text);
+    background: color-mix(in srgb, var(--bg) 62%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    overflow: hidden;
+    backdrop-filter: blur(2px);
+    transition: border-color 0.15s ease, background-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .cal-cell:hover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+  }
+  .cal-cell.is-other {
+    background: transparent;
+    opacity: 0.5;
+  }
+  .cal-cell.is-other .cal-daynum {
+    color: var(--text-muted);
+  }
+  .cal-cell.is-selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  }
+
+  .cal-daynum {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    padding: 0 0.3rem;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  .cal-cell.is-today .cal-daynum {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* Termine innerhalb einer Zelle */
+  .cal-events {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    overflow: hidden;
+  }
+  .cal-event {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.12rem 0.35rem;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border-left: 2px solid var(--accent);
+    font-size: 0.76rem;
+    line-height: 1.35;
+    overflow: hidden;
+  }
+  .cal-event-dot {
+    flex: none;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .cal-event-time {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+  }
+  .cal-event-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cal-event-more {
+    padding-left: 0.35rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+  }
+
+  @media (max-width: 40rem) {
+    .cal-grid {
+      gap: 0.25rem;
+    }
+    .cal-cell {
+      min-height: 4.75rem;
+      padding: 0.3rem;
+      border-radius: 8px;
+    }
+    .cal-event-time {
+      display: none;
+    }
+    .cal-event-title {
+      font-size: 0.72rem;
+    }
+  }
+
+  /* Tagesliste */
+  .event-list {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0 0;
+  }
+  .event-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .event-item:last-child {
+    border-bottom: none;
+  }
+  .event-time {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    min-width: 3rem;
+  }
+  .event-title {
+    flex: 1;
+  }
+
+  /* Formular */
+  .event-form {
+    margin-top: 1rem;
+  }
+  .event-form-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .event-form input[type='text'] {
+    flex: 1;
+    min-width: 10rem;
+  }
+  .event-form input {
+    font: inherit;
+    font-size: 0.95rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .event-form input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: var(--accent);
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.9rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    transition: background-color 0.15s ease;
+  }
+  .btn:hover {
+    background: var(--accent-hover);
+    color: #fff;
+    text-decoration: none;
+  }
+  .btn.ghost {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    box-shadow: none;
+  }
+  .btn.ghost:hover {
+    color: var(--text);
+    border-color: var(--accent);
+    background: transparent;
+  }
+  .btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+
+  .form-error {
+    margin: 0.75rem 0 0;
+    color: #dc2626;
+    font-size: 0.9rem;
+  }
+
+  .cal-notice {
+    margin: 1rem 0 0;
+    padding: 0.65rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-subtle));
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+</style>
