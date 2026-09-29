@@ -237,14 +237,17 @@ const isHome = Astro.url.pathname === '/';
     color: var(--text);
     border-color: var(--accent);
   }
-  /* Hell: Mond anzeigen · Dunkel: Sonne anzeigen */
+  /* Hell: Mond anzeigen · Dunkel: Sonne anzeigen.
+     Das data-theme-Attribut sitzt auf <html>, also außerhalb dieser Komponente.
+     Darum :global(...) – sonst hängt Astro das Scope-Attribut an den Vorfahren
+     und die Regel greift nie. */
   .theme-toggle .icon-sun {
     display: none;
   }
-  [data-theme="dark"] .theme-toggle .icon-moon {
+  :global([data-theme='dark']) .theme-toggle .icon-moon {
     display: none;
   }
-  [data-theme="dark"] .theme-toggle .icon-sun {
+  :global([data-theme='dark']) .theme-toggle .icon-sun {
     display: block;
   }
 </style>
